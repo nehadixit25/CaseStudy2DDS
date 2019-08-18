@@ -406,3 +406,6 @@ write.csv(pred_nb_validation[order(pred_nb_validation$ID),], "C:/Users/ndixit/Do
 # writing Salary to output
 pred_lm_validation =data.frame(Employee.NoSalary,exp(predict(Model.lm.updated, newdata= Employee.NoSalary)))
 write.csv(pred_lm_validation[order(pred_lm_validation$ID),], "C:/Users/ndixit/Documents/SMU/Sem1/Doing datascience/MSDS-6306-Doing-Data-Science/UNIT 14/Case2PredictionsDixit Salary.csv")
+
+#Youtube video url
+#https://youtu.be/ngyexa0fbNw
