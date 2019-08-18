@@ -1,0 +1,408 @@
+---
+title: "CaseStudy2_DDS"
+author: "Neha Dixit"
+date: "8/9/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction 
+To conduct an analysis on the existing employee data and identify top three factors that contribute to the turnover.Identify Job role specific trends in the exitsing dataset and predict employee turnover.
+
+```{r attrition , warning = FALSE}
+
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message = F)
+
+# Load library
+library(gridExtra)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(corrplot) 
+library(e1071)
+library(ggthemes)
+library(caret)
+library(tidyverse)
+library(scales)
+library("openxlsx")
+
+
+
+## Data Loading
+
+# Load Employee dataset 
+Filelocation <- "C:/Users/ndixit/Documents/SMU/Sem1/Doing datascience/MSDS-6306-Doing-Data-Science/UNIT 14/CaseStudy2-data.csv"
+Employee <- read.csv(Filelocation)
+
+
+## EDA
+
+#Identify NA in dataset
+Employee.NA <- colSums(sapply(Employee, is.na))
+
+# Create a  table view
+Employee.NA <- data.frame(Variables = names(Employee.NA), NA.Count = Employee.NA); rownames(Employee.NA) <- c()
+Employee.NA
+
+# Identify Character variables
+Employee.List <- sapply(Employee, class)
+Employee.List
+
+#Identify unique values
+Employee.Unique <- rapply(Employee,function(x)length(unique(x)))
+
+# Create a  table view
+Employee.Unique <- data.frame(Variables = names(Employee.Unique), Unique.Count = Employee.Unique); rownames(Employee.Unique) <- c()
+Employee.Unique
+
+
+# Remove Columne with 1 value
+Employee.Subset <- select(Employee,-c("EmployeeCount","StandardHours","Over18"))
+
+
+## Data visualizations
+
+#Plot numerical variables correlation
+correlator  <-  function(df){
+	df %>% 	
+		keep(is.numeric) %>%
+		cor %>%
+		corrplot( addCoef.col = "white", number.digits = 2,
+			 number.cex = 0.5, method="circle",
+			 order="hclust", title="Variable Corr Heatmap",
+			 tl.srt=45, tl.cex = 0.8)
+}
+correlator(Employee.Subset)
+
+
+# Numerical data exploration
+
+p1 <- ggplot(Employee.Subset) + geom_histogram(aes(Age), binwidth = 5, fill = "orange",col = "black")
+p2 <- ggplot(Employee.Subset) + geom_histogram(aes(DistanceFromHome), binwidth = 5, fill = "orange",col = "black")
+p3 <- ggplot(Employee.Subset) + geom_histogram(aes(NumCompaniesWorked), binwidth = 2, fill = "orange",col = "black")
+p4 <- ggplot(Employee.Subset) + geom_histogram(aes(TotalWorkingYears), binwidth = 4, fill = "orange",col = "black")
+
+p5 <- ggplot(Employee.Subset) + geom_histogram(aes(HourlyRate), binwidth = 5, fill = "orange",col = "black")
+p6 <- ggplot(Employee.Subset) + geom_histogram(aes(DailyRate), binwidth = 100, fill = "orange",col = "black")
+p7 <- ggplot(Employee.Subset) + geom_histogram(aes(MonthlyRate), binwidth = 1000, fill = "orange",col = "black")
+
+p8 <- ggplot(Employee.Subset) + geom_histogram(aes(MonthlyIncome), binwidth = 1000, fill = "orange",col = "black")
+p9 <- ggplot(Employee.Subset) + geom_histogram(aes(PercentSalaryHike), binwidth = 1, fill = "orange",col = "black")
+p10 <- ggplot(Employee.Subset) + geom_histogram(aes(YearsAtCompany), binwidth = 2, fill = "orange",col = "black")
+p11 <- ggplot(Employee.Subset) + geom_histogram(aes(YearsInCurrentRole), binwidth = 2, fill = "orange",col = "black")
+p12 <- ggplot(Employee.Subset) + geom_histogram(aes(YearsSinceLastPromotion), binwidth = 2, fill = "orange",col = "black")
+p13 <- ggplot(Employee.Subset) + geom_histogram(aes(YearsWithCurrManager), binwidth = 2, fill = "orange",col = "black")
+
+
+grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+grid.arrange(p5, p6, p7, ncol = 2, nrow = 2)
+grid.arrange(p8, p9, p10,p11,p12,p13, ncol = 2, nrow = 3)
+
+
+#categorial Data Exploration
+
+# Attrition by Department
+Employee.Subset.Attrition.Department <- as.data.frame(Employee.Subset%>% select (Attrition,Department) %>% count(Attrition,Department))
+ggplot(data = Employee.Subset.Attrition.Department, aes(x=reorder(Department,-n) , y= n, fill = Attrition)) +    geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(Department,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("Department")+ ylab("Counts")
+
+# Attrition by Gender
+Employee.Subset.Attrition.Gender <- as.data.frame(Employee.Subset%>% select (Attrition,Gender) %>% count(Attrition,Gender))
+ggplot(data = Employee.Subset.Attrition.Gender, aes(x=reorder(Gender,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(Gender,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("Gender") + ylab("Counts")
+
+# Attrition by EducationField
+Employee.Subset.Attrition.EducationField <- as.data.frame(Employee.Subset%>% select (Attrition,EducationField) %>% count(Attrition,EducationField))
+ggplot(data = Employee.Subset.Attrition.EducationField, aes(x=reorder(EducationField,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(EducationField,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("EducationField") + ylab("Counts")
+
+# Attrition by Education
+Employee.Subset.Attrition.Education <- as.data.frame(Employee.Subset%>% select (Attrition,Education) %>% count(Attrition,Education))
+ggplot(data = Employee.Subset.Attrition.Education, aes(x=reorder(Education,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(Education,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("Education") + ylab("Counts")
+
+# Attrition by EnvironmentSatisfaction
+Employee.Subset.Attrition.EnvironmentSatisfaction <- as.data.frame(Employee.Subset%>% select (Attrition,EnvironmentSatisfaction) %>% count(Attrition,EnvironmentSatisfaction))
+ggplot(data = Employee.Subset.Attrition.EnvironmentSatisfaction, aes(x=reorder(EnvironmentSatisfaction,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(EnvironmentSatisfaction,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("EnvironmentSatisfaction") + ylab("Counts")
+
+# Attrition by NumCompaniesWorked
+Employee.Subset.Attrition.NumCompaniesWorked <- as.data.frame(Employee.Subset%>% select (Attrition,NumCompaniesWorked) %>% count(Attrition,NumCompaniesWorked))
+ggplot(data = Employee.Subset.Attrition.NumCompaniesWorked, aes(x=reorder(NumCompaniesWorked,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(NumCompaniesWorked,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("NumCompaniesWorked") + ylab("Counts")
+
+# Attrition by WorkLifeBalance
+Employee.Subset.Attrition.WorkLifeBalance <- as.data.frame(Employee.Subset%>% select (Attrition,WorkLifeBalance) %>% count(Attrition,WorkLifeBalance))
+ggplot(data = Employee.Subset.Attrition.WorkLifeBalance, aes(x=reorder(WorkLifeBalance,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(WorkLifeBalance,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("WorkLifeBalance") + ylab("Counts")
+
+# Attrition by RelationshipSatisfaction
+Employee.Subset.Attrition.RelationshipSatisfaction <- as.data.frame(Employee.Subset%>% select (Attrition,RelationshipSatisfaction) %>% count(Attrition,RelationshipSatisfaction))
+ggplot(data = Employee.Subset.Attrition.RelationshipSatisfaction, aes(x=reorder(RelationshipSatisfaction,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(RelationshipSatisfaction,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("RelationshipSatisfaction") + ylab("Counts")
+
+
+# Attrition by OverTime
+Employee.Subset.Attrition.OverTime <- as.data.frame(Employee.Subset%>% select (Attrition,OverTime) %>% count(Attrition,OverTime))
+ggplot(data = Employee.Subset.Attrition.OverTime, aes(x=reorder(OverTime,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(OverTime,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("OverTime") + ylab("Counts")
+
+# Attrition by PerformanceRating
+Employee.Subset.Attrition.PerformanceRating <- as.data.frame(Employee.Subset%>% select (Attrition,PerformanceRating) %>% count(Attrition,PerformanceRating))
+ggplot(data = Employee.Subset.Attrition.PerformanceRating, aes(x=reorder(PerformanceRating,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(PerformanceRating,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("PerformanceRating") + ylab("Counts")
+
+
+# Attrition by JobInvolvement
+Employee.Subset.Attrition.JobInvolvement <- as.data.frame(Employee.Subset%>% select (Attrition,JobInvolvement) %>% count(Attrition,JobInvolvement))
+ggplot(data = Employee.Subset.Attrition.JobInvolvement, aes(x=reorder(JobInvolvement,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(JobInvolvement,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("JobInvolvement") + ylab("Counts")
+
+# Attrition by BusinessTravel
+Employee.Subset.Attrition.BusinessTravel <- as.data.frame(Employee.Subset%>% select (Attrition,BusinessTravel) %>% count(Attrition,BusinessTravel))
+ggplot(data = Employee.Subset.Attrition.BusinessTravel, aes(x=reorder(BusinessTravel,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(BusinessTravel,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("BusinessTravel") + ylab("Counts")
+
+
+# Attrition by MaritalStatus
+Employee.Subset.Attrition.MaritalStatus <- as.data.frame(Employee.Subset%>% select (Attrition,MaritalStatus) %>% count(Attrition,MaritalStatus))
+ggplot(data = Employee.Subset.Attrition.MaritalStatus, aes(x=reorder(MaritalStatus,-n) , y= n, fill = Attrition)) + geom_bar(stat="identity", ymin=0, aes(y=n, ymax=n), position="dodge") +geom_text(aes(x=reorder(MaritalStatus,-n) , y= n, ymax=n, label=n), 
+            position = position_dodge(width=1))+xlab("MaritalStatus") + ylab("Counts")
+
+# Relative Attrition Viz
+
+# Attrition Rate by Department
+p1 <- Employee.Subset %>%
+  group_by(Department) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = Department, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate - Department") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))
+
+# Attrition Rate by Job Role
+p2 <- Employee.Subset %>%
+  group_by(JobRole) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobRole, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Job Role") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate),  position=position_dodge(width=0.2))
+
+grid.arrange(p1, p2, ncol = 2)
+
+p1 <- Employee.Subset %>%
+  group_by(BusinessTravel) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = BusinessTravel, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Business Travel") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 30))
+
+p2 <- Employee.Subset %>%
+  group_by(EnvironmentSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = EnvironmentSatisfaction, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Environment Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 30))
+
+p3<- Employee.Subset %>%
+  group_by(JobInvolvement) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobInvolvement, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Job Involvement") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 40))
+
+p4 <- Employee.Subset %>%
+  group_by(JobSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobSatisfaction, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Job Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+p5 <- Employee.Subset %>%
+  group_by(OverTime) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = OverTime, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Over Time") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 35))
+
+p6 <- Employee.Subset %>%
+   group_by(PerformanceRating) %>% 
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = as.factor(PerformanceRating), y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Performance Rating") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 20))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 2, ncol = 3)
+
+p1 <- Employee.Subset %>%
+  group_by(Gender) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = Gender, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Gender") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 20))
+
+
+p2 <- Employee.Subset%>%
+  group_by(Education) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = Education, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Education") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 20))
+
+p3 <- Employee.Subset %>%
+  group_by(EducationField) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = EducationField, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate by Education Field") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 30))
+
+p4 <- Employee.Subset %>%
+  group_by(MaritalStatus) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = MaritalStatus, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate - Marital Status") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 30))
+
+p5 <- Employee.Subset %>%
+  group_by(RelationshipSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = as.factor(RelationshipSatisfaction), y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate - Relationship Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate),  position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 30))
+
+p6 <- Employee.Subset %>%
+  group_by(WorkLifeBalance) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = as.factor(WorkLifeBalance), y = attrition_rate))+ geom_bar(stat = 'identity',fill = "orange") + ggtitle("Attrition Rate - Work Life Balance") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate),  position=position_dodge(width=0.2))+ scale_y_continuous(limits = c(0, 35))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 2, ncol = 3)
+
+# Density plots
+
+p1 <- Employee.Subset %>%
+  ggplot(aes(x = Age, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Age") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+p2 <- Employee.Subset %>%
+  ggplot(aes(x = DistanceFromHome, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Distance From Home")  + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+p3 <- Employee.Subset %>%
+  ggplot(aes(x = NumCompaniesWorked, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Number of Companies")  + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+p4 <- Employee.Subset %>%
+  ggplot(aes(x = TotalWorkingYears, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Total Working Years")  + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+
+
+p1 <- Employee.Subset %>%
+  ggplot(aes(x = MonthlyIncome, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Monthly Income") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p2 <- Employee.Subset %>%
+  ggplot(aes(x = PercentSalaryHike, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Percentage Salary Hike") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p3 <- Employee.Subset %>%
+  ggplot(aes(x = YearsAtCompany, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years At Company") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p4 <- Employee.Subset %>%
+  ggplot(aes(x = YearsInCurrentRole, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years in Current Role") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p5 <- Employee.Subset %>%
+  ggplot(aes(x = YearsSinceLastPromotion, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years Since Last Promotion") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+p6 <- Employee.Subset %>%
+  ggplot(aes(x = YearsWithCurrManager, fill = Attrition)) + geom_density(alpha = 0.5) + ggtitle("Years With Current Manager") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank())
+
+
+grid.arrange(p1, p2, p3, p4, p5, p6 , nrow = 3, ncol = 2)
+
+## Data Preparation
+
+#Normalizing the explanatory variables
+
+Employee.Subset.Transformed <- Employee.Subset %>%  mutate(Age = log(Age+1),DailyRate = log(DailyRate+1),DistanceFromHome = log(DistanceFromHome+1),HourlyRate = log(HourlyRate+1) ,MonthlyIncome = log(MonthlyIncome+1),MonthlyRate = log(MonthlyRate+1),NumCompaniesWorked = log(NumCompaniesWorked+1) ,PercentSalaryHike = log(PercentSalaryHike+1) ,TotalWorkingYears = log(TotalWorkingYears+1),TrainingTimesLastYear = log(TrainingTimesLastYear+1),YearsAtCompany = log(YearsAtCompany+1),YearsInCurrentRole = log(YearsInCurrentRole+1) ,YearsSinceLastPromotion = log(YearsSinceLastPromotion+1),YearsWithCurrManager = log(YearsWithCurrManager+1))
+
+# Logistic Regression
+# Spliting Dataset
+
+set.seed(123)
+
+ s_size <- function(df,split) {
+	floor(nrow(df)*split)
+}
+sampler <- function(data, split, sn = 0){
+	if (sn != 0) set.seed(sn)	
+	train_ind <- sample(seq_len(nrow(data)), size = s_size(data, split))
+	train <- data[train_ind,]
+	test <- data[-train_ind, ]
+	list("train" = train,  "test" = test)
+
+}
+
+partitions  <- sampler(data = Employee.Subset, split = 0.75, sn = 0)
+Training <- partitions$train
+Test <- partitions$test
+summary(Training)
+summary(Test)
+
+
+control <- trainControl(method = "repeatedcv", number= 25,repeats = 5, summaryFunction = twoClassSummary, classProbs = TRUE)
+model_nb <- train(as.factor(Attrition)~., data=Training, method="nb", metric = "Spec", trControl=control)
+pred_nb <- predict(model_nb, newdata=Test)
+confusionMatrix(pred_nb, Test$Attrition)
+
+## KNN 
+control <- trainControl(method = "repeatedcv", number= 25,repeats = 5, summaryFunction = twoClassSummary, classProbs = TRUE)
+model_knn <- train(as.factor(Attrition)~., data=Training, method="knn", metric = "Spec", trControl=control)
+pred_knn <- predict(model_knn, newdata=Test)
+confusionMatrix(pred_knn, Test$Attrition)
+
+
+## Linear Regression
+# Split Test Train
+
+Employee.Subset.Numeric <- Employee.Subset.Transformed%>% 	keep(is.numeric)
+
+s_size <- function(df,split) {
+	floor(nrow(df)*split)
+}
+sampler <- function(data, split, sn = 0){
+	if (sn != 0) set.seed(sn)	
+	train_ind <- sample(seq_len(nrow(data)), size = s_size(data, split))
+	train <- data[train_ind,]
+	test <- data[-train_ind, ]
+	list("train" = train,  "test" = test)
+
+}
+
+partitions  <- sampler(data = Employee.Subset.Numeric, split = 0.80, sn = 0)
+Training <- partitions$train
+Test <- partitions$test
+summary(Training)
+summary(Test)
+
+# Building model with all x exploratory variables
+Model.lm = lm(Training$MonthlyIncome ~ ., data = Training)
+summary(Model.lm)
+
+# Updating the model for only significant exploratory variables
+Model.lm.updated =  lm(Training$MonthlyIncome ~ TotalWorkingYears+JobLevel+YearsInCurrentRole , data=Training)
+Model.lm.Pred = predict(Model.lm.updated, newdata= Test)
+Model.lm.Pred.df<- as.data.frame(Model.lm.Pred)
+colnames(Model.lm.Pred.df)<- c("MonthlyIncome")
+
+# Model metrics( RMSE, ASE)
+summary(Model.lm.updated)
+RSS <- c(crossprod(Model.lm.updated$residuals))
+MSE <- RSS / length(Model.lm.updated$residuals)
+RMSE <- sqrt(MSE)
+RMSE.Actual <- exp(RMSE)
+RMSE.Actual
+ASE <- mean((Test$MonthlyIncome- Model.lm.Pred)^2)
+ASE.Actual <- exp(ASE)
+
+##RandomForest
+control <- trainControl(method="repeatedcv", number=5, repeats= 5)
+model_rf <- train(MonthlyIncome ~., data=Training, method="rf", trControl=control, tuneLength = 10)
+pred_rf <- predict(model_rf, newdata=Test)
+
+
+## Using above models generating predicted salary and attrition data
+
+Filelocation <- "C:/Users/ndixit/Documents/SMU/Sem1/Doing datascience/MSDS-6306-Doing-Data-Science/UNIT 14/CaseStudy2CompSet No Attrition.csv"
+Employee.NoAttrition <- read.csv(Filelocation)
+
+Filelocation <- "C:/Users/ndixit/Documents/SMU/Sem1/Doing datascience/MSDS-6306-Doing-Data-Science/UNIT 14/CaseStudy2CompSet No Salary.xlsx"
+Employee.NoSalary <- read.xlsx(Filelocation)
+
+# Writing Attrition prediction to output
+pred_nb_validation <- data.frame(Employee.NoAttrition,predict(model_nb, newdata=Employee.NoAttrition))
+write.csv(pred_nb_validation[order(pred_nb_validation$ID),], "C:/Users/ndixit/Documents/SMU/Sem1/Doing datascience/MSDS-6306-Doing-Data-Science/UNIT 14/Case2PredictionsDixit Attrition.csv")
+
+# writing Salary to output
+pred_lm_validation =data.frame(Employee.NoSalary,exp(predict(Model.lm.updated, newdata= Employee.NoSalary)))
+write.csv(pred_lm_validation[order(pred_lm_validation$ID),], "C:/Users/ndixit/Documents/SMU/Sem1/Doing datascience/MSDS-6306-Doing-Data-Science/UNIT 14/Case2PredictionsDixit Salary.csv")
